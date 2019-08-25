@@ -1,36 +1,44 @@
 local PANEL = {} -- Main panel
 
 function PANEL:Init()
-
 	self:MakePopup()
 	self:SetDeleteOnClose(false)
 	self:SetSizable(true)
 	self:SetTitle("Fishing Mod")
-
-	
 	self.baitshop = vgui.Create("Fishingmod:BaitShop", self)
 	
-	fishingmod.BaitIcons = self.baitshop:GetItems()
+	fishingmod.BaitIcons = {}
+	for k,v in pairs(self.baitshop.categories) do
+		for _, icon in ipairs(v.horiz_scroller:GetItems()) do
+			table.insert(fishingmod.BaitIcons, icon)	
+		end
+	end
 	
 	self.upgrade = vgui.Create("Fishingmod:Upgrade", self)
 	
 	self.sheet = vgui.Create("DPropertySheet", self)
-	self:DockPadding(3,21+3,3,3)
 	self.sheet:Dock(FILL)
-	self:SetSize(300, 400)self:Center()
+	self:DockPadding(3,21+3,3,3)
+	self:SetSize(300, 400)
+	self:Center()
 	
-	
+	-- Add more sheets, maybe more fishing rods and prestige?
 	self.sheet:AddSheet("Upgrade", self.upgrade, "icon16/star.png", false, false)
 	self.sheet:AddSheet("Bait Shop", self.baitshop, "icon16/add.png", false, false)
 	
 	fishingmod.UpdateSales()
-	
 end
-vgui.Register( "Fishingmod:ShopMenu", PANEL, "DFrame" )
 
+vgui.Register( "Fishingmod:ShopMenu", PANEL, "DFrame" )
 
 -- Upgrade Tab 
 local PANEL = {}
+
+function PANEL:CreateUpgradeLabel(varname, printname, type, command, price)
+	self[varname] = vgui.Create("Fishingmod:UpgradeButton", self)
+	self[varname]:SetType(printname, type, command, price)
+	self:AddItem(self[varname])
+end
 
 function PANEL:Init()
 	local x,y = self:GetParent():GetSize()
@@ -38,73 +46,106 @@ function PANEL:Init()
 	self:SetPadding(5)
 	self:SetPadding(5)
 	
-	self.money = vgui.Create("DLabel", self)
-	self.money.Think = function(self) self:SetText("Money: "..LocalPlayer().fishingmod.money) end
 	
+	self.money = vgui.Create("DLabel", self)
+	self.money.Think = function(self)
+		local money = LocalPlayer().fishingmod.money
+		self:SetText("Money: " .. money)
+	end
 	self:AddItem(self.money)
 	
-	self.length = vgui.Create("Fishingmod:UpgradeButton", self)
-	self.length:SetType("Rod Length:", "length", "rod_length", fishingmod.RodLengthPrice)
-
-	self:AddItem(self.length)
-	
-	self.stringlength = vgui.Create("Fishingmod:UpgradeButton", self)
-	self.stringlength:SetType("String Length:", "string_length", "string_length", fishingmod.StringLengthPrice)
-
-	self:AddItem(self.stringlength)
-	
-	self.reelspeed = vgui.Create("Fishingmod:UpgradeButton", self)
-	self.reelspeed:SetType("Reel Speed:", "reel_speed", "reel_speed", fishingmod.ReelSpeedPrice)
-	self:AddItem(self.reelspeed)
-	
-	self.force = vgui.Create("Fishingmod:UpgradeButton", self)
-	self.force:SetType("Hook Force:", "force", "hook_force", fishingmod.HookForcePrice)
-	self:AddItem(self.force)
+	self:CreateUpgradeLabel("length"      , "Rod Length:"   , "length"       , "rod_length"   , fishingmod.RodLengthPrice   )
+	self:CreateUpgradeLabel("stringlength", "String Length:", "string_length", "string_length", fishingmod.StringLengthPrice)
+	self:CreateUpgradeLabel("reelspeed"   , "Reel Speed:"   , "reel_speed"   , "reel_speed"   , fishingmod.ReelSpeedPrice   )
+	self:CreateUpgradeLabel("force"       , "Hook Force:"   , "force"        , "hook_force"   , fishingmod.HookForcePrice   )
 end
 
 vgui.Register("Fishingmod:Upgrade", PANEL,"DPanelList")
 	
-	
-	
+
 -- Bait Shop tab
 local PANEL = {}
 
 function PANEL:Init()
-	
 	self:Dock(FILL)
-	self:EnableHorizontal(true)
-	self:EnableVerticalScrollbar(true)
 	
+	-- Populate bait shop table
 	local tbl = {}
 	for key, data in pairs(fishingmod.BaitTable) do
-		tbl[data.models[1]] = {price = data.price, name = key}
+		local mdl = data.models[1]
+		tbl[mdl] = {
+			price = data.price,
+			name  = key,
+			level = fishingmod.CatchTable[key].levelrequired
+		}
 	end	
 	
-	-- Add baits
+	self.categories = {}
+	local categories = {5, 10, 15, 30, 50}
+	
+	for k,v in pairs(categories) do
+		local category_table = {
+			min = k == 1 and 0 or (k == #categories and v or categories[k - 1]),
+			max = (k == #categories and 999 or v)
+		}
+		
+		local category_panel = self:Add("Bait for levels " .. tostring(category_table.min) .. (category_table.max ~= 999 and "-" .. tostring(category_table.max) or "+"))
+		
+		category_table.sheet = category_panel
+		category_table.horiz_scroller = vgui.Create("DPanelList")
+		local scroller = category_table.horiz_scroller
+		
+		scroller:Dock(FILL)
+		scroller:EnableHorizontal(true)
+		scroller:EnableVerticalScrollbar(true)
+		category_table.sheet:SetContents(scroller)
+		table.insert(self.categories, category_table)
+	end
+	
 	for model, data in pairs(tbl) do
 		local level = LocalPlayer().fishingmod.level
-		local levelrequired = fishingmod.CatchTable[data.name].levelrequired
-	
+		local required_level = data.level
+		
+		local category_table = {}
+		for k,v in pairs(self.categories) do
+			if required_level >= v.min and required_level	< v.max then
+				category_table = v
+				break
+			end
+		end
+		
+		-- PrintTable(_cat)
+		
+		if next(category_table) == nil then continue end
+		
 		local icon = vgui.Create("Fishingmod:SpawnIcon")
 		icon:SetModel(model)
-		icon:SetToolTip("This bait cost " .. data.price .. " and\nit is a level "..levelrequired.." bait.")
+		icon:SetTooltip(
+			"This bait has a chance to catch a(n) " .. data.name
+			.. "\nand requires level "
+			.. required_level
+			.. "\n\nCost: $"
+			.. string.Comma(tostring(data.price))
+		)
 		icon:SetSize(58,58)
 		
 		fishingmod.BaitTable[data.name].icon = icon
+		fishingmod.BaitTable[data.name].name = data.name
 		
-		if level < levelrequired then
+		if level < required_level then
 			icon:SetGrey(true)
 		else
 			icon.DoClick = function()
 				RunConsoleCommand("fishing_mod_buy_bait", data.name)
 			end
 		end
-		self:AddItem(icon)
+		
+		category_table.horiz_scroller:AddItem(icon)
 	end
 		
 end
 	
-vgui.Register("Fishingmod:BaitShop", PANEL,"DPanelList")
+vgui.Register("Fishingmod:BaitShop", PANEL,"DCategoryList")
 
 
 ------------- Helper components --------------
@@ -119,6 +160,7 @@ function PANEL:Init()
 	self.left:SetTooltip("+0")
 	
 	self.left.DoClick = function()
+		-- Change these to network messages
 		RunConsoleCommand("fishingmod_downgrade_"..self.command, "1")
 	end
 			
@@ -146,7 +188,7 @@ function PANEL:SetType(friendly, type, command, loss)
 	self.friendly = friendly
 	self.command = command
 	self.type = type
-	self.right:SetTooltip("-"..loss)
+	self.right:SetTooltip("-" .. loss)
 	self.set = true
 	self.leftlabel:SetText(self.friendly)
 end
@@ -167,7 +209,7 @@ function PANEL:Init()
 end
 
 function PANEL:SetSale(multiplier)
-	self.percent = math.Round((multiplier*-1+1)*100)
+	self.percent = math.Round((multiplier * -1 + 1) * 100)
 end
 
 function PANEL:SetGrey(bool)
@@ -177,28 +219,39 @@ end
 function PANEL:PaintOver(w, h)
 	self.BaseClass.PaintOver(self, w, h)
 
-	draw.SimpleText( self.percent.."% OFF", "DermaDefault", 5, 3, color_black, TEXT_ALIGN_LEFT,TEXT_ALIGN_LEFT)
-	draw.SimpleText( self.percent.."% OFF", "DermaDefault", 4, 2, HSVToColor(math.Clamp(self.percent+40,0,160),1,1), TEXT_ALIGN_LEFT,TEXT_ALIGN_LEFT)
-	if self.grey then draw.RoundedBox( 6, 0, 0, 58, 58, Color( 100, 100, 100, 200 ) ) end
+	draw.SimpleText(self.percent.."% OFF", "DermaDefault", 5, 3, color_black, TEXT_ALIGN_LEFT,TEXT_ALIGN_LEFT)
+	draw.SimpleText(self.percent.."% OFF", "DermaDefault", 4, 2, HSVToColor(math.Clamp(self.percent + 40, 0, 160), 1, 1), TEXT_ALIGN_LEFT, TEXT_ALIGN_LEFT)
+	if self.grey then
+		draw.RoundedBox(6, 0, 0, 58, 58, Color(100, 100, 100, 200))
+	end
 end
 
 vgui.Register("Fishingmod:SpawnIcon", PANEL, "SpawnIcon")
 
-
-
-
 function fishingmod.UpdateSales()
 	for key, bait in pairs(fishingmod.BaitTable) do
-		local levelrequired = fishingmod.CatchTable[key].levelrequired
+		local required_level = fishingmod.CatchTable[key].levelrequired
 		local saleprice = math.Round(bait.price * bait.multiplier)
-		local sale = "This bait now cost " .. math.Round(bait.price * bait.multiplier) .. "!\nIts original price is " .. bait.price .. "."
-		
-		if saleprice == 0 then
-			sale = "This bait is free! "
-		end
 		
 		if IsValid(bait.icon) then
-			bait.icon:SetToolTip(sale .. "\nYou need to be level "..levelrequired.." or higher to use this bait.")
+			local newprice
+			if saleprice ~= 0 then
+				newprice = "$" .. string.Comma(tostring(saleprice))
+			else
+				newprice = "FREE!"
+			end
+			
+			bait.icon:SetTooltip(
+				"This bait has a chance to catch a(n) " .. bait.name
+				.. "\nand requires level "
+				.. required_level
+				-- .. "\n\nThere is a sale for this bait!"
+				.. "\n\nOriginal Cost: $"
+				.. string.Comma(tostring(bait.price))
+				.. "\nCost now: "
+				.. newprice
+			)
+			
 			bait.icon:SetSale(bait.multiplier)
 		end
 	end
